@@ -21,6 +21,14 @@
         Estatísticas
       </router-link>
 
+      <router-link
+        to="/settings"
+        class="app-header__link"
+        active-class="app-header__link--active"
+      >
+        Configurações
+      </router-link>
+
       <button type="button" class="app-header__link app-header__link--logout" @click="logout">
         Sair
       </button>

@@ -6,6 +6,7 @@ import DashboardView from "../views/DashboardView.vue";
 import CreateTaskView from "../views/CreateTaskView.vue";
 import StatisticsView from "../views/StatisticsView.vue";
 import AgendaView from "../views/AgendaView.vue";
+import SettingsView from "../views/SettingsView.vue";
 
 const routes = [
   {
@@ -39,6 +40,10 @@ const routes = [
   {
     path: "/agenda",
     component: AgendaView,
+  },
+  {
+    path: "/settings",
+    component: SettingsView,
   },
 ];
 

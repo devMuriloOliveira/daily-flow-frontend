@@ -24,7 +24,19 @@
       </div>
       <div class="progress-bar">
         <div class="progress-bar__fill" :style="{ width: progressPercent + '%' }"></div>
+        <div
+          class="progress-bar__goal"
+          :style="{ left: dailyCompletionGoal + '%' }"
+          :aria-label="`Meta diária: ${dailyCompletionGoal}%`"
+        ></div>
       </div>
+      <div class="progress-meta">
+        <span>Meta diária: {{ dailyCompletionGoal }}%</span>
+        <router-link to="/settings" class="progress-meta__link">Editar</router-link>
+      </div>
+      <p class="progress-feedback" :class="{ 'progress-feedback--success': goalReached }">
+        {{ progressFeedback }}
+      </p>
     </div>
 
     <nav class="day-nav">
@@ -120,6 +132,10 @@ import api from "../services/api";
 import AppHeader from "../components/AppHeader.vue";
 import TaskCard from "../components/TaskCard.vue";
 import { hasTaskTime } from "../utils/taskFormatters";
+import {
+  calculateDailyProgress,
+  calculateTasksNeededForGoal,
+} from "../utils/progress";
 
 const router = useRouter();
 const route = useRoute();
@@ -153,9 +169,36 @@ const completedTasks = computed(
   () => tasks.value.filter((task) => task.isCompleted).length
 );
 
-const progressPercent = computed(() => {
-  if (totalTasks.value === 0) return 0;
-  return Math.round((completedTasks.value / totalTasks.value) * 100);
+const dailyCompletionGoal = computed(() => user.value?.dailyCompletionGoal || 70);
+
+const dailyProgress = computed(() =>
+  calculateDailyProgress(tasks.value, dailyCompletionGoal.value)
+);
+
+const progressPercent = computed(() => dailyProgress.value.progressPercent);
+
+const goalReached = computed(() => dailyProgress.value.goalReached);
+
+const tasksNeededForGoal = computed(() =>
+  calculateTasksNeededForGoal(tasks.value, dailyCompletionGoal.value)
+);
+
+const progressFeedback = computed(() => {
+  if (totalTasks.value === 0) {
+    return "Nenhuma tarefa cadastrada para hoje.";
+  }
+
+  if (goalReached.value) {
+    return `Bom trabalho! Você concluiu ${progressPercent.value}% das tarefas de hoje. Sua meta era ${dailyCompletionGoal.value}%.`;
+  }
+
+  const missing = tasksNeededForGoal.value;
+  const suffix =
+    missing > 0
+      ? ` Falta concluir mais ${missing} ${missing === 1 ? "tarefa" : "tarefas"} para atingir sua meta de hoje.`
+      : "";
+
+  return `Você concluiu ${progressPercent.value}% das tarefas. Sua meta diária é ${dailyCompletionGoal.value}%.${suffix}`;
 });
 
 const tasksWithTime = computed(() => {
@@ -371,10 +414,10 @@ onMounted(() => {
 }
 
 .progress-bar {
+  position: relative;
   height: 6px;
   background: var(--card-secondary);
   border-radius: 99px;
-  overflow: hidden;
 }
 
 .progress-bar__fill {
@@ -382,6 +425,48 @@ onMounted(() => {
   background: linear-gradient(90deg, var(--primary), #60a5fa);
   border-radius: 99px;
   transition: width 0.4s ease;
+}
+
+.progress-bar__goal {
+  position: absolute;
+  top: -4px;
+  width: 2px;
+  height: 14px;
+  border-radius: 99px;
+  background: #fbbf24;
+  transform: translateX(-50%);
+  box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.16);
+}
+
+.progress-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+}
+
+.progress-meta__link {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.progress-feedback {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid rgba(59, 130, 246, 0.24);
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+}
+
+.progress-feedback--success {
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(34, 197, 94, 0.35);
+  color: #86efac;
 }
 
 .day-nav {
