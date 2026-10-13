@@ -115,21 +115,40 @@ function logout() {
 
 @media (max-width: 600px) {
   .app-header {
-    flex-wrap: wrap;
+    flex-direction: column;
+    align-items: stretch;
     gap: 14px;
     margin-bottom: 22px;
   }
 
+  .app-header__brand {
+    align-self: flex-start;
+  }
+
   .app-header__nav {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     width: 100%;
-    justify-content: stretch;
+    gap: 8px;
   }
 
   .app-header__link {
-    flex: 1;
+    width: 100%;
     min-width: 0;
+    min-height: 42px;
     padding: 10px 8px;
     font-size: 0.78rem;
+    line-height: 1.15;
+    text-align: center;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 360px) {
+  .app-header__link {
+    font-size: 0.74rem;
+    padding-inline: 6px;
   }
 }
 </style>

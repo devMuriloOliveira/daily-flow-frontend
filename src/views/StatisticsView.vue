@@ -940,14 +940,36 @@ onMounted(() => {
     padding: 14px 12px 32px;
   }
 
-  .stats-intro,
+  .stats-intro {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+    margin-bottom: 22px;
+  }
+
   .stats-intro__actions {
     flex-direction: column;
     align-items: stretch;
+    gap: 10px;
+    width: 100%;
+  }
+
+  .period-toggle {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .period-toggle__button {
+    width: 100%;
+    min-width: 0;
+    min-height: 36px;
   }
 
   .stats-intro__back {
-    align-self: flex-start;
+    align-self: stretch;
+    justify-content: center;
+    min-height: 40px;
   }
 
   .stats-grid,
