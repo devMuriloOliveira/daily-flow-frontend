@@ -43,6 +43,10 @@
       <p>Carregando estatísticas...</p>
     </div>
 
+    <div v-else-if="errorMessage" class="empty-state empty-state--error">
+      <p>{{ errorMessage }}</p>
+    </div>
+
     <template v-else>
       <div class="stats-grid">
         <div class="stat-card stat-card--total">
@@ -240,6 +244,7 @@ import AppHeader from "../components/AppHeader.vue";
 
 const selectedPeriod = ref(7);
 const loading = ref(false);
+const errorMessage = ref("");
 const statistics = ref(createEmptyStatistics());
 
 function createEmptyStatistics() {
@@ -300,9 +305,9 @@ const tasksSeries = computed(() => [
 ]);
 
 const prioritySeries = computed(() => [
-  statistics.value.priorityDistribution.high,
-  statistics.value.priorityDistribution.medium,
-  statistics.value.priorityDistribution.low,
+  toChartNumber(statistics.value.priorityDistribution.high),
+  toChartNumber(statistics.value.priorityDistribution.medium),
+  toChartNumber(statistics.value.priorityDistribution.low),
 ]);
 
 function toChartNumber(value) {
@@ -475,6 +480,63 @@ const priorityChartOptions = computed(() => ({
   },
 }));
 
+function normalizeDay(day) {
+  return {
+    date: day?.date || "",
+    label: day?.label || day?.date || "",
+    totalTasks: toChartNumber(day?.totalTasks),
+    completedTasks: toChartNumber(day?.completedTasks),
+    completionRate: toChartNumber(day?.completionRate),
+    weightedProgress: toChartNumber(day?.weightedProgress),
+    totalWeight: toChartNumber(day?.totalWeight),
+    completedWeight: toChartNumber(day?.completedWeight),
+    dailyCompletionGoal: toChartNumber(day?.dailyCompletionGoal || 70),
+    goalReached: Boolean(day?.goalReached),
+  };
+}
+
+function normalizeStatistics(payload) {
+  const empty = createEmptyStatistics();
+  const days = Array.isArray(payload?.days) ? payload.days.map(normalizeDay) : [];
+
+  return {
+    ...empty,
+    ...payload,
+    totalTasks: toChartNumber(payload?.totalTasks),
+    completedTasks: toChartNumber(payload?.completedTasks),
+    completionRate: toChartNumber(payload?.completionRate),
+    weightedProgress: toChartNumber(payload?.weightedProgress),
+    dailyCompletionGoal: toChartNumber(payload?.dailyCompletionGoal || empty.dailyCompletionGoal),
+    goalReachedDays: toChartNumber(payload?.goalReachedDays),
+    goalReachedRate: toChartNumber(payload?.goalReachedRate),
+    activeDays: toChartNumber(payload?.activeDays),
+    averageWeightedProgress: toChartNumber(payload?.averageWeightedProgress),
+    bestDay: payload?.bestDay || null,
+    priorityDistribution: {
+      high: toChartNumber(payload?.priorityDistribution?.high),
+      medium: toChartNumber(payload?.priorityDistribution?.medium),
+      low: toChartNumber(payload?.priorityDistribution?.low),
+    },
+    priorityCompletion: Array.isArray(payload?.priorityCompletion)
+      ? payload.priorityCompletion
+      : {
+          high: {
+            total: toChartNumber(payload?.priorityCompletion?.high?.total),
+            completed: toChartNumber(payload?.priorityCompletion?.high?.completed),
+          },
+          medium: {
+            total: toChartNumber(payload?.priorityCompletion?.medium?.total),
+            completed: toChartNumber(payload?.priorityCompletion?.medium?.completed),
+          },
+          low: {
+            total: toChartNumber(payload?.priorityCompletion?.low?.total),
+            completed: toChartNumber(payload?.priorityCompletion?.low?.completed),
+          },
+        },
+    days,
+  };
+}
+
 function getAuthConfig() {
   const token = localStorage.getItem("token");
 
@@ -487,6 +549,7 @@ function getAuthConfig() {
 
 async function loadStatistics() {
   loading.value = true;
+  errorMessage.value = "";
 
   try {
     const response = await api.get(
@@ -494,24 +557,13 @@ async function loadStatistics() {
       getAuthConfig()
     );
 
-    statistics.value = {
-      ...createEmptyStatistics(),
-      ...response.data,
-      priorityDistribution: {
-        ...createEmptyStatistics().priorityDistribution,
-        ...(response.data.priorityDistribution || {}),
-      },
-      priorityCompletion: Array.isArray(response.data.priorityCompletion)
-        ? response.data.priorityCompletion
-        : {
-            ...createEmptyStatistics().priorityCompletion,
-            ...(response.data.priorityCompletion || {}),
-          },
-      days: response.data.days || [],
-    };
+    statistics.value = normalizeStatistics(response.data);
   } catch (error) {
     console.log(error);
     statistics.value = createEmptyStatistics();
+    errorMessage.value =
+      error.response?.data?.message ||
+      "Não foi possível carregar as estatísticas agora.";
   } finally {
     loading.value = false;
   }
@@ -852,6 +904,11 @@ onMounted(() => {
 
 .empty-state--large {
   margin-top: 24px;
+}
+
+.empty-state--error {
+  color: #fecaca;
+  border-color: rgba(248, 113, 113, 0.45);
 }
 
 .empty-state__hint {
