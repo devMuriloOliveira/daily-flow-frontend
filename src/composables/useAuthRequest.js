@@ -1,9 +1,53 @@
 import { ref, onUnmounted } from "vue";
 
-const SLOW_REQUEST_MS = 3000;
-const REQUEST_TIMEOUT_MS = 60000;
+const RETRY_DELAYS_MS = [0, 2500, 5000, 9000, 14000];
+const REQUEST_TIMEOUT_MS = 15000;
+const MAX_TOTAL_RETRY_MS = 45000;
+
+function wait(ms, signal) {
+  if (ms === 0) {
+    return Promise.resolve();
+  }
+
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, ms);
+
+    signal?.addEventListener(
+      "abort",
+      () => {
+        clearTimeout(timer);
+        reject(new DOMException("Operação cancelada.", "AbortError"));
+      },
+      { once: true }
+    );
+  });
+}
+
+function isCanceled(error) {
+  return error?.name === "AbortError" || error?.code === "ERR_CANCELED";
+}
+
+function isTemporaryConnectionError(error) {
+  if (isCanceled(error)) {
+    return false;
+  }
+
+  if (error.response?.status === 401 || error.response?.status === 403) {
+    return false;
+  }
+
+  if (!error.response) {
+    return true;
+  }
+
+  return [502, 503, 504].includes(error.response.status);
+}
 
 function getFriendlyErrorMessage(error, fallback) {
+  if (isCanceled(error)) {
+    return "Operação cancelada.";
+  }
+
   if (error.response?.data?.message) {
     return error.response.data.message;
   }
@@ -13,7 +57,7 @@ function getFriendlyErrorMessage(error, fallback) {
   }
 
   if (!error.response) {
-    return "Não foi possível conectar ao servidor. Ele pode estar iniciando — aguarde alguns segundos e tente novamente.";
+    return "Não foi possível conectar ao servidor. Ele pode estar iniciando. Tente novamente em instantes.";
   }
 
   if (error.response.status >= 500) {
@@ -28,46 +72,108 @@ export function useAuthRequest() {
   const slowMessage = ref("");
   const message = ref("");
   const messageType = ref("error");
+  const canRetry = ref(false);
+  const retryLabel = ref("Tentar novamente");
 
-  let slowTimer = null;
+  let activeController = null;
+  let lastRequest = null;
 
-  function clearSlowTimer() {
-    if (slowTimer) {
-      clearTimeout(slowTimer);
-      slowTimer = null;
+  function cancelActiveRequest() {
+    if (activeController) {
+      activeController.abort();
+      activeController = null;
     }
   }
 
   function resetFeedback() {
     message.value = "";
     slowMessage.value = "";
-    clearSlowTimer();
+    canRetry.value = false;
+    retryLabel.value = "Tentar novamente";
   }
 
-  async function runAuthRequest(requestFn, { fallbackError = "Não foi possível concluir a operação." } = {}) {
+  async function runAuthRequest(
+    requestFn,
+    { fallbackError = "Não foi possível concluir a operação.", rememberRequest = true } = {}
+  ) {
+    if (loading.value) {
+      return null;
+    }
+
+    if (rememberRequest) {
+      lastRequest = () => runAuthRequest(requestFn, { fallbackError, rememberRequest: false });
+    }
+
     resetFeedback();
     loading.value = true;
+    cancelActiveRequest();
 
-    slowTimer = setTimeout(() => {
-      slowMessage.value =
-        "Estamos conectando ao servidor. Isso pode levar alguns segundos na primeira tentativa.";
-    }, SLOW_REQUEST_MS);
+    const controller = new AbortController();
+    activeController = controller;
+    const startedAt = Date.now();
+    let lastError = null;
 
     try {
-      return await requestFn({ timeout: REQUEST_TIMEOUT_MS });
-    } catch (error) {
+      for (let attemptIndex = 0; attemptIndex < RETRY_DELAYS_MS.length; attemptIndex += 1) {
+        const delay = RETRY_DELAYS_MS[attemptIndex];
+        const attemptNumber = attemptIndex + 1;
+        const remainingTime = MAX_TOTAL_RETRY_MS - (Date.now() - startedAt);
+
+        if (remainingTime <= 0) {
+          break;
+        }
+
+        if (delay > 0) {
+          slowMessage.value = `Servidor iniciando. Nova tentativa em ${Math.ceil(delay / 1000)}s...`;
+          await wait(Math.min(delay, remainingTime), controller.signal);
+        }
+
+        slowMessage.value =
+          attemptNumber === 1
+            ? "Conectando ao servidor..."
+            : `Tentando reconectar ao servidor (${attemptNumber}/${RETRY_DELAYS_MS.length})...`;
+
+        try {
+          const response = await requestFn({
+            timeout: Math.min(REQUEST_TIMEOUT_MS, Math.max(1000, remainingTime)),
+            signal: controller.signal,
+          });
+
+          resetFeedback();
+          return response;
+        } catch (error) {
+          lastError = error;
+
+          if (!isTemporaryConnectionError(error)) {
+            break;
+          }
+        }
+      }
+
       messageType.value = "error";
-      message.value = getFriendlyErrorMessage(error, fallbackError);
+      message.value = getFriendlyErrorMessage(lastError || {}, fallbackError);
+      canRetry.value = Boolean(lastRequest) && isTemporaryConnectionError(lastError);
       return null;
     } finally {
+      if (activeController === controller) {
+        activeController = null;
+      }
+
       loading.value = false;
-      clearSlowTimer();
       slowMessage.value = "";
     }
   }
 
+  function retryLastRequest() {
+    if (!lastRequest || loading.value) {
+      return null;
+    }
+
+    return lastRequest();
+  }
+
   onUnmounted(() => {
-    clearSlowTimer();
+    cancelActiveRequest();
   });
 
   return {
@@ -75,7 +181,11 @@ export function useAuthRequest() {
     slowMessage,
     message,
     messageType,
+    canRetry,
+    retryLabel,
     runAuthRequest,
+    retryLastRequest,
     resetFeedback,
+    cancelActiveRequest,
   };
 }

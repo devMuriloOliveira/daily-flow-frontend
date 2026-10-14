@@ -119,6 +119,17 @@
         {{ message }}
       </p>
 
+      <button
+        v-if="canRetry"
+        type="button"
+        class="btn btn-ghost btn-block auth-retry"
+        :disabled="loading"
+        @click="retryLastRequest"
+      >
+        <span v-if="loading" class="btn-spinner" aria-hidden="true"></span>
+        {{ loading ? "Tentando..." : retryLabel }}
+      </button>
+
       <p class="auth-footer">
         <router-link to="/login">Já tenho conta</router-link>
       </p>
@@ -133,7 +144,16 @@ import api from "../services/api";
 import { useAuthRequest } from "../composables/useAuthRequest";
 
 const router = useRouter();
-const { loading, slowMessage, message, messageType, runAuthRequest } = useAuthRequest();
+const {
+  loading,
+  slowMessage,
+  message,
+  messageType,
+  canRetry,
+  retryLabel,
+  runAuthRequest,
+  retryLastRequest,
+} = useAuthRequest();
 
 const name = ref("");
 const email = ref("");
@@ -377,6 +397,10 @@ async function register() {
   background: rgba(34, 197, 94, 0.15);
   border: 1px solid rgba(34, 197, 94, 0.4);
   color: #86efac;
+}
+
+.auth-retry {
+  margin-top: 12px;
 }
 
 .auth-footer {
